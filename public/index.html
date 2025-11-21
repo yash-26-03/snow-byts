@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberSec Tools Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+
+<body>
+    <div class="scanline"></div>
+    <div class="container">
+        <header>
+            <h1 class="glitch" data-text="CYBER_SEC_TOOLS">CYBER_SEC_TOOLS</h1>
+            <div class="status-bar">
+                <span>SYSTEM: ONLINE</span>
+                <span>USER: ANONYMOUS</span>
+                <span id="clock">00:00:00</span>
+            </div>
+            <div class="breadcrumb" id="breadcrumb">
+                <span class="breadcrumb-item">HOME</span>
+            </div>
+        </header>
+
+        <main>
+            <nav class="sidebar">
+                <div class="category">
+                    <div class="category-header" data-category="encoders">
+                        <span class="category-icon">▶</span>
+                        <span>ENCODERS/DECODERS</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="encoders/base64">BASE64</li>
+                        <li data-route="encoders/base32">BASE32</li>
+                        <li data-route="encoders/url">URL_ENCODER</li>
+                        <li data-route="encoders/hex">HEX</li>
+                    </ul>
+                </div>
+
+                <div class="category">
+                    <div class="category-header" data-category="hash">
+                        <span class="category-icon">▶</span>
+                        <span>HASH_TOOLS</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="hash/md5">MD5</li>
+                        <li data-route="hash/sha1">SHA1</li>
+                        <li data-route="hash/sha256">SHA256</li>
+                        <li data-route="hash/sha512">SHA512</li>
+                    </ul>
+                </div>
+
+                <div class="category">
+                    <div class="category-header" data-category="virustotal">
+                        <span class="category-icon">▶</span>
+                        <span>VIRUSTOTAL</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="virustotal/file-scan">FILE_SCANNER</li>
+                        <li data-route="virustotal/url-scan">URL_SCANNER</li>
+                        <li data-route="virustotal/hash-lookup">HASH_LOOKUP</li>
+                        <li data-route="virustotal/ip-domain">IP/DOMAIN_LOOKUP</li>
+                    </ul>
+                </div>
+
+
+                <div class="category">
+                    <div class="category-header" data-category="terminal">
+                        <span class="category-icon">▶</span>
+                        <span>TERMINAL</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="terminal/shell">WEB_TERMINAL</li>
+                    </ul>
+                </div>
+
+                <div class="category">
+                    <div class="category-header" data-category="temp">
+                        <span class="category-icon">▶</span>
+                        <span>TEMP_SERVICES</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="temp/email">TEMP_EMAIL</li>
+                        <li data-route="temp/sms">TEMP_SMS</li>
+                    </ul>
+                </div>
+            </nav>
+
+            <section class="content">
+                <!-- Base64 Tool -->
+                <div id="base64-tool" class="tool-panel active">
+                    <h2>// BASE64_ENCODER_DECODER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="base64-input">INPUT_DATA:</label>
+                            <textarea id="base64-input" placeholder="ENTER TEXT TO ENCODE/DECODE..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-base64-encode" class="cyber-btn">ENCODE >></button>
+                            <button id="btn-base64-decode" class="cyber-btn">
+                                << DECODE</button>
+                                    <button id="btn-base64-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="base64-output">OUTPUT_DATA:</label>
+                            <textarea id="base64-output" readonly placeholder="RESULT WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Base32 Tool -->
+                <div id="base32-tool" class="tool-panel">
+                    <h2>// BASE32_ENCODER_DECODER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="base32-input">INPUT_DATA:</label>
+                            <textarea id="base32-input" placeholder="ENTER TEXT TO ENCODE/DECODE..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-base32-encode" class="cyber-btn">ENCODE >></button>
+                            <button id="btn-base32-decode" class="cyber-btn">
+                                << DECODE</button>
+                                    <button id="btn-base32-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="base32-output">OUTPUT_DATA:</label>
+                            <textarea id="base32-output" readonly placeholder="RESULT WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MD5 Tool -->
+                <div id="md5-tool" class="tool-panel">
+                    <h2>// MD5_HASHER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="md5-input">INPUT_TEXT:</label>
+                            <textarea id="md5-input" placeholder="ENTER TEXT TO HASH..."></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label for="md5-file">OR UPLOAD_FILE:</label>
+                            <input type="file" id="md5-file" class="cyber-input">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-md5-hash" class="cyber-btn">HASH >></button>
+                            <button id="btn-md5-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="md5-output">OUTPUT_HASH:</label>
+                            <textarea id="md5-output" readonly placeholder="HASH WILL APPEAR HERE..."></textarea>
+                        </div>
+                        <div class="input-group">
+                            <label for="md5-expected">EXPECTED_HASH (for comparison):</label>
+                            <input type="text" id="md5-expected" class="cyber-text-input"
+                                placeholder="ENTER EXPECTED HASH TO COMPARE...">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-md5-compare" class="cyber-btn">COMPARE >></button>
+                        </div>
+                        <div id="md5-comparison-result" class="comparison-result"></div>
+                    </div>
+                </div>
+
+                <!-- SHA1 Tool -->
+                <div id="sha1-tool" class="tool-panel">
+                    <h2>// SHA1_HASHER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="sha1-input">INPUT_DATA:</label>
+                            <textarea id="sha1-input" placeholder="ENTER TEXT TO HASH..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-sha1-hash" class="cyber-btn">HASH >></button>
+                            <button id="btn-sha1-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="sha1-output">OUTPUT_HASH:</label>
+                            <textarea id="sha1-output" readonly placeholder="HASH WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SHA256 Tool -->
+                <div id="sha256-tool" class="tool-panel">
+                    <h2>// SHA256_HASHER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="sha256-input">INPUT_DATA:</label>
+                            <textarea id="sha256-input" placeholder="ENTER TEXT TO HASH..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-sha256-hash" class="cyber-btn">HASH >></button>
+                            <button id="btn-sha256-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="sha256-output">OUTPUT_HASH:</label>
+                            <textarea id="sha256-output" readonly placeholder="HASH WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SHA512 Tool -->
+                <div id="sha512-tool" class="tool-panel">
+                    <h2>// SHA512_HASHER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="sha512-input">INPUT_DATA:</label>
+                            <textarea id="sha512-input" placeholder="ENTER TEXT TO HASH..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-sha512-hash" class="cyber-btn">HASH >></button>
+                            <button id="btn-sha512-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="sha512-output">OUTPUT_HASH:</label>
+                            <textarea id="sha512-output" readonly placeholder="HASH WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- URL Tool -->
+                <div id="url-tool" class="tool-panel">
+                    <h2>// URL_ENCODER_DECODER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="url-input">INPUT_DATA:</label>
+                            <textarea id="url-input" placeholder="ENTER URL TO ENCODE/DECODE..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-url-encode" class="cyber-btn">ENCODE >></button>
+                            <button id="btn-url-decode" class="cyber-btn">
+                                << DECODE</button>
+                                    <button id="btn-url-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="url-output">OUTPUT_DATA:</label>
+                            <textarea id="url-output" readonly placeholder="RESULT WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hex Tool -->
+                <div id="hex-tool" class="tool-panel">
+                    <h2>// HEX_CONVERTER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="hex-input">INPUT_DATA:</label>
+                            <textarea id="hex-input" placeholder="ENTER TEXT TO CONVERT..."></textarea>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-hex-encode" class="cyber-btn">TEXT -> HEX</button>
+                            <button id="btn-hex-decode" class="cyber-btn">HEX -> TEXT</button>
+                            <button id="btn-hex-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div class="input-group">
+                            <label for="hex-output">OUTPUT_DATA:</label>
+                            <textarea id="hex-output" readonly placeholder="RESULT WILL APPEAR HERE..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- VirusTotal File Scanner -->
+                <div id="vt-file-tool" class="tool-panel">
+                    <h2>// VIRUSTOTAL_FILE_SCANNER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="vt-file-input">UPLOAD_FILE:</label>
+                            <input type="file" id="vt-file-input" class="cyber-input">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-vt-file-scan" class="cyber-btn">SCAN FILE >></button>
+                            <button id="btn-vt-file-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div id="vt-file-status" class="vt-status"></div>
+                        <div id="vt-file-result" class="vt-result"></div>
+                    </div>
+                </div>
+
+                <!-- VirusTotal URL Scanner -->
+                <div id="vt-url-tool" class="tool-panel">
+                    <h2>// VIRUSTOTAL_URL_SCANNER</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="vt-url-input">URL_TO_SCAN:</label>
+                            <input type="text" id="vt-url-input" class="cyber-text-input"
+                                placeholder="ENTER URL TO SCAN...">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-vt-url-scan" class="cyber-btn">SCAN URL >></button>
+                            <button id="btn-vt-url-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div id="vt-url-status" class="vt-status"></div>
+                        <div id="vt-url-result" class="vt-result"></div>
+                    </div>
+                </div>
+
+                <!-- VirusTotal Hash Lookup -->
+                <div id="vt-hash-tool" class="tool-panel">
+                    <h2>// VIRUSTOTAL_HASH_LOOKUP</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="vt-hash-input">FILE_HASH (MD5/SHA1/SHA256):</label>
+                            <input type="text" id="vt-hash-input" class="cyber-text-input"
+                                placeholder="ENTER FILE HASH...">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-vt-hash-lookup" class="cyber-btn">LOOKUP >></button>
+                            <button id="btn-vt-hash-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div id="vt-hash-status" class="vt-status"></div>
+                        <div id="vt-hash-result" class="vt-result"></div>
+                    </div>
+                </div>
+
+                <!-- VirusTotal IP/Domain Lookup -->
+                <div id="vt-ip-tool" class="tool-panel">
+                    <h2>// VIRUSTOTAL_IP/DOMAIN_LOOKUP</h2>
+                    <div class="tool-interface">
+                        <div class="input-group">
+                            <label for="vt-ip-type">LOOKUP_TYPE:</label>
+                            <select id="vt-ip-type" class="cyber-select">
+                                <option value="ip">IP_ADDRESS</option>
+                                <option value="domain">DOMAIN</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label for="vt-ip-input">IP/DOMAIN:</label>
+                            <input type="text" id="vt-ip-input" class="cyber-text-input"
+                                placeholder="ENTER IP OR DOMAIN...">
+                        </div>
+                        <div class="controls">
+                            <button id="btn-vt-ip-lookup" class="cyber-btn">LOOKUP >></button>
+                            <button id="btn-vt-ip-clear" class="cyber-btn warning">CLEAR</button>
+                        </div>
+                        <div id="vt-ip-status" class="vt-status"></div>
+                        <div id="vt-ip-result" class="vt-result"></div>
+                    </div>
+                </div>
+
+                <!-- Terminal Tool -->
+                <div id="terminal-tool" class="tool-panel">
+                    <h2>// WEB_TERMINAL</h2>
+                    <div class="tool-interface">
+                        <div class="terminal-warning">
+                            <strong>⚠️ WARNING:</strong> This terminal executes real commands on your system. Use with
+                            caution!
+                        </div>
+                        <div id="terminal-container"></div>
+                    </div>
+                </div>
+
+                <!-- Temp Email Tool -->
+                <div id="temp-email-tool" class="tool-panel">
+                    <h2>// TEMPORARY_EMAIL</h2>
+                    <div class="tool-interface">
+                        <div class="temp-controls">
+                            <button id="btn-generate-email" class="cyber-btn">GENERATE EMAIL >></button>
+                            <div id="email-display" class="email-display" style="display: none;">
+                                <label>YOUR TEMP EMAIL:</label>
+                                <div class="email-copy-container">
+                                    <input type="text" id="generated-email" readonly class="cyber-text-input">
+                                    <button id="btn-copy-email" class="cyber-btn">COPY</button>
+                                </div>
+                                <div id="email-simulation-warning" class="simulation-warning"
+                                    style="color: #ffaa00; margin-top: 5px; font-size: 0.9em; display: none;">
+                                    ⚠️ NOTE: Using simulation fallback (API unavailable).
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="email-inbox-container" style="display: none;">
+                            <div
+                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h3>INBOX (<span id="email-count">0</span>)</h3>
+                                <button id="btn-reload-email" class="cyber-btn">🔄 RELOAD</button>
+                            </div>
+                            <button id="btn-simulate-email" class="cyber-btn"
+                                style="margin-bottom: 15px; display: none;">RECEIVE TEST EMAIL
+                                (SIMULATION)</button>
+                        </div>
+                        <div id="email-inbox" class="inbox-list"></div>
+                        <div id="email-viewer" class="message-viewer" style="display: none;"></div>
+                    </div>
+                </div>
+    </div>
+
+    <!-- Temp SMS Tool -->
+    <div id="temp-sms-tool" class="tool-panel">
+        <h2>// TEMPORARY_SMS</h2>
+        <div class="tool-interface">
+            <div class="temp-controls">
+                <button id="btn-generate-sms" class="cyber-btn">GENERATE PHONE >></button>
+                <div id="sms-display" class="email-display" style="display: none;">
+                    <label>YOUR TEMP PHONE:</label>
+                    <div class="email-copy-container">
+                        <input type="text" id="generated-phone" readonly class="cyber-text-input">
+                        <button id="btn-copy-phone" class="cyber-btn">COPY</button>
+                    </div>
+                    <div class="demo-note">💡 Demo: Use "Simulate SMS" button to test</div>
+                    <div class="simulation-warning" style="color: #ffaa00; margin-top: 5px; font-size: 0.9em;">
+                        ⚠️ NOTE: This is a simulation. Real SMS cannot be received.
+                    </div>
+                </div>
+            </div>
+
+            <div id="sms-inbox-container" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3>MESSAGES (<span id="sms-count">0</span>)</h3>
+                    <button id="btn-reload-sms" class="cyber-btn">🔄 RELOAD</button>
+                </div>
+                <button id="btn-simulate-sms" class="cyber-btn" style="margin-bottom: 15px;">RECEIVE TEST
+                    SMS
+                    (DEMO)</button>
+                <div id="sms-loading" class="loading-indicator" style="display: none;">⏳ Loading messages...
+                </div>
+                <div id="sms-inbox" class="inbox-list"></div>
+                <div id="sms-viewer" class="message-viewer" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+    </main>
+    </div>
+    <script src="script.js"></script>
+</body>
+
+</html>
