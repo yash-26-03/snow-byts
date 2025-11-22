@@ -1122,6 +1122,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const select = document.getElementById('network-interface');
             select.innerHTML = '';
 
+            if (data.warning) {
+                select.innerHTML = `<option value="">${data.warning}</option>`;
+                select.disabled = true;
+                document.getElementById('btn-start-capture').disabled = true;
+                document.getElementById('capture-filter').disabled = true;
+                return;
+            }
+
             if (data.interfaces && data.interfaces.length > 0) {
                 let activeInterface = null;
 

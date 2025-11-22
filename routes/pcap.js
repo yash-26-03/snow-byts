@@ -182,13 +182,22 @@ let captureStats = { packets: 0, bytes: 0 };
 
 // Get available network interfaces
 router.get('/interfaces', async (req, res) => {
+    // Check if running on Vercel or if tshark is missing
+    if (process.env.VERCEL) {
+        return res.json({
+            interfaces: [],
+            warning: 'Live capture not supported in serverless environment'
+        });
+    }
+
     try {
         const { exec } = require('child_process');
         exec('tshark -D', (error, stdout, stderr) => {
             if (error) {
-                return res.status(500).json({
-                    error: 'Failed to list interfaces. Is tshark installed?',
-                    details: error.message
+                console.warn('tshark not found or failed:', error.message);
+                return res.json({
+                    interfaces: [],
+                    warning: 'tshark not installed - live capture disabled'
                 });
             }
 
@@ -205,15 +214,19 @@ router.get('/interfaces', async (req, res) => {
             }).filter(Boolean);
 
             // Find active interfaces using os.networkInterfaces()
-            const osInterfaces = os.networkInterfaces();
-            interfaces.forEach(iface => {
-                const osIface = osInterfaces[iface.name] || osInterfaces[iface.description];
-                if (osIface) {
-                    // Check if it has an IPv4 address that is not internal
-                    const active = osIface.some(details => details.family === 'IPv4' && !details.internal);
-                    if (active) iface.active = true;
-                }
-            });
+            try {
+                const osInterfaces = os.networkInterfaces();
+                interfaces.forEach(iface => {
+                    const osIface = osInterfaces[iface.name] || osInterfaces[iface.description];
+                    if (osIface) {
+                        // Check if it has an IPv4 address that is not internal
+                        const active = osIface.some(details => details.family === 'IPv4' && !details.internal);
+                        if (active) iface.active = true;
+                    }
+                });
+            } catch (err) {
+                console.warn('Error matching OS interfaces:', err);
+            }
 
             // Sort active interfaces to top
             interfaces.sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
@@ -221,7 +234,8 @@ router.get('/interfaces', async (req, res) => {
             res.json({ interfaces });
         });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to get interfaces: ' + error.message });
+        console.error('Interface listing error:', error);
+        res.json({ interfaces: [], error: error.message });
     }
 });
 
