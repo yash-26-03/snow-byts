@@ -12,15 +12,47 @@ const port = 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Import routers
-const virusTotalRouter = require('./routes/virustotal');
-const tempServicesRouter = require('./routes/tempservices');
-const pcapRouter = require('./routes/pcap');
+// Import routers with error handling
+let virusTotalRouter;
+let tempServicesRouter;
+let pcapRouter;
 
-// Mount routers
-app.use('/api/vt', virusTotalRouter);
-app.use('/api/temp', tempServicesRouter);
-app.use('/api/pcap', pcapRouter);
+try {
+  virusTotalRouter = require('./routes/virustotal');
+} catch (error) {
+  console.error('Failed to load VirusTotal router:', error.message);
+}
+
+try {
+  tempServicesRouter = require('./routes/tempservices');
+} catch (error) {
+  console.error('Failed to load Temp Services router:', error.message);
+}
+
+try {
+  pcapRouter = require('./routes/pcap');
+} catch (error) {
+  console.error('Failed to load PCAP router:', error.message);
+}
+
+// Mount routers if available
+if (virusTotalRouter) {
+  app.use('/api/vt', virusTotalRouter);
+} else {
+  app.use('/api/vt', (req, res) => res.status(503).json({ error: 'Service unavailable' }));
+}
+
+if (tempServicesRouter) {
+  app.use('/api/temp', tempServicesRouter);
+} else {
+  app.use('/api/temp', (req, res) => res.status(503).json({ error: 'Service unavailable' }));
+}
+
+if (pcapRouter) {
+  app.use('/api/pcap', pcapRouter);
+} else {
+  app.use('/api/pcap', (req, res) => res.status(503).json({ error: 'Service unavailable' }));
+}
 
 // Route for the home page
 app.get('/', (req, res) => {
