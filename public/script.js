@@ -698,16 +698,71 @@ document.addEventListener('DOMContentLoaded', () => {
         hideResult('vt-ip-result');
     });
 
-    // --- Terminal Integration ---
+    // --- Terminal Integration (Client-Side Simulation) ---
     let terminalInstance = null;
-    let socket = null;
     let terminalInitialized = false;
+
+    // Client-side File System
+    const fileSystem = {
+        '/root': {
+            type: 'dir',
+            children: {
+                'Documents': { type: 'dir', children: {} },
+                'Downloads': { type: 'dir', children: {} },
+                'Tools': { type: 'dir', children: {} },
+                'scan_report.pdf': { type: 'file' },
+                'notes.txt': { type: 'file' }
+            }
+        }
+    };
+
+    let currentCwd = '/root';
+    let commandBuffer = '';
+
+    function resolvePath(cwd, target) {
+        if (!target) return cwd;
+        let parts;
+        if (target.startsWith('/')) {
+            parts = target.split('/').filter(p => p);
+        } else {
+            const cwdParts = cwd.split('/').filter(p => p);
+            const targetParts = target.split('/').filter(p => p);
+            parts = [...cwdParts, ...targetParts];
+        }
+        const stack = [];
+        for (const part of parts) {
+            if (part === '.') continue;
+            if (part === '..') {
+                stack.pop();
+            } else {
+                stack.push(part);
+            }
+        }
+        return '/' + stack.join('/');
+    }
+
+    function getDir(path) {
+        if (path === '/') return { type: 'dir', children: fileSystem };
+        if (path === '/root') return fileSystem['/root'];
+        if (path.startsWith('/root/')) {
+            const parts = path.split('/').slice(2);
+            let current = fileSystem['/root'];
+            for (const part of parts) {
+                if (current && current.children && current.children[part]) {
+                    current = current.children[part];
+                } else {
+                    return null;
+                }
+            }
+            return current;
+        } else if (path === '/') {
+            return { type: 'dir', children: { 'root': fileSystem['/root'] } };
+        }
+        return null;
+    }
 
     function initializeTerminal() {
         if (terminalInitialized) return;
-
-        // Initialize socket connection
-        socket = io();
 
         // Create xterm instance
         terminalInstance = new Terminal({
@@ -721,51 +776,243 @@ document.addEventListener('DOMContentLoaded', () => {
                 cursorAccent: '#000000',
                 selection: '#003300'
             },
-            scrollback: 5000, // Allow scrolling back 5000 lines
+            scrollback: 5000,
             scrollOnUserInput: true,
             screenReaderMode: true
         });
 
-        // Add fit addon
         const fitAddon = new FitAddon.FitAddon();
         terminalInstance.loadAddon(fitAddon);
 
-        // Open terminal in container
         const container = document.getElementById('terminal-container');
         terminalInstance.open(container);
         fitAddon.fit();
-
-        // Request terminal creation from server
-        socket.emit('create-terminal');
-
-        // Handle terminal output from server
-        socket.on('terminal-output', (data) => {
-            terminalInstance.write(data);
-        });
-
-        // Handle terminal input
-        terminalInstance.onData((data) => {
-            socket.emit('terminal-input', data);
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            fitAddon.fit();
-            socket.emit('terminal-resize', {
-                cols: terminalInstance.cols,
-                rows: terminalInstance.rows
-            });
-        });
 
         // Welcome message
         terminalInstance.writeln('\x1b[1;32m╔═══════════════════════════════════════════════════════════╗\x1b[0m');
         terminalInstance.writeln('\x1b[1;32m║         CYBER SECURITY TOOLS - WEB TERMINAL              ║\x1b[0m');
         terminalInstance.writeln('\x1b[1;32m╚═══════════════════════════════════════════════════════════╝\x1b[0m');
         terminalInstance.writeln('');
-        terminalInstance.writeln('\x1b[1;33m⚠️  WARNING: Commands execute on the host system!\x1b[0m');
+        terminalInstance.writeln('\x1b[1;33m⚠️  WARNING: Simulated Environment (Safe Mode)\x1b[0m');
         terminalInstance.writeln('');
 
+        const prompt = () => {
+            terminalInstance.write(`\r\nroot@kali:${currentCwd}# `);
+        };
+
+        prompt();
+
+        // Handle input
+        terminalInstance.onData(e => {
+            switch (e) {
+                case '\r': // Enter
+                    terminalInstance.write('\r\n');
+                    if (commandBuffer.trim()) {
+                        handleCommand(commandBuffer.trim());
+                    } else {
+                        prompt();
+                    }
+                    commandBuffer = '';
+                    break;
+                case '\u007F': // Backspace
+                    if (commandBuffer.length > 0) {
+                        terminalInstance.write('\b \b');
+                        commandBuffer = commandBuffer.slice(0, -1);
+                    }
+                    break;
+                default:
+                    if (e >= String.fromCharCode(0x20) && e <= String.fromCharCode(0x7E) || e >= '\u00a0') {
+                        commandBuffer += e;
+                        terminalInstance.write(e);
+                    }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+
         terminalInitialized = true;
+
+        function handleCommand(cmdStr) {
+            const args = cmdStr.split(' ');
+            const cmd = args[0].toLowerCase();
+
+            switch (cmd) {
+                case 'help':
+                    terminalInstance.writeln('Available commands:');
+                    terminalInstance.writeln('  \x1b[1;33mhelp\x1b[0m     - Show this help message');
+                    terminalInstance.writeln('  \x1b[1;33mls\x1b[0m       - List files');
+                    terminalInstance.writeln('  \x1b[1;33mpwd\x1b[0m      - Print working directory');
+                    terminalInstance.writeln('  \x1b[1;33mcd\x1b[0m       - Change directory');
+                    terminalInstance.writeln('  \x1b[1;33mmkdir\x1b[0m    - Create directory');
+                    terminalInstance.writeln('  \x1b[1;33mwhoami\x1b[0m   - Print current user');
+                    terminalInstance.writeln('  \x1b[1;33mclear\x1b[0m    - Clear terminal screen');
+                    terminalInstance.writeln('  \x1b[1;33msudo\x1b[0m     - Execute a command as another user');
+                    terminalInstance.writeln('  \x1b[1;33mpkg\x1b[0m      - Package manager simulation');
+                    terminalInstance.writeln('  \x1b[1;33mping\x1b[0m     - Send ICMP ECHO_REQUEST to network hosts');
+                    terminalInstance.writeln('  \x1b[1;33mnmap\x1b[0m     - Network exploration tool and security scanner');
+                    terminalInstance.writeln('  \x1b[1;33mip\x1b[0m       - Show IP address');
+                    prompt();
+                    break;
+                case 'clear':
+                    terminalInstance.write('\x1b[2J\x1b[H');
+                    prompt();
+                    break;
+                case 'ls':
+                    const dir = getDir(currentCwd);
+                    if (dir && dir.children) {
+                        const items = Object.entries(dir.children).map(([name, item]) => {
+                            return item.type === 'dir' ? `\x1b[1;34m${name}\x1b[0m` : `\x1b[1;32m${name}\x1b[0m`;
+                        });
+                        terminalInstance.writeln(items.join('  '));
+                    }
+                    prompt();
+                    break;
+                case 'pwd':
+                    terminalInstance.writeln(currentCwd);
+                    prompt();
+                    break;
+                case 'cd':
+                    if (!args[1]) {
+                        currentCwd = '/root';
+                    } else {
+                        const target = resolvePath(currentCwd, args[1]);
+                        const targetDir = getDir(target);
+                        if (targetDir && targetDir.type === 'dir') {
+                            currentCwd = target;
+                        } else {
+                            terminalInstance.writeln(`bash: cd: ${args[1]}: No such file or directory`);
+                        }
+                    }
+                    prompt();
+                    break;
+                case 'mkdir':
+                    if (!args[1]) {
+                        terminalInstance.writeln('mkdir: missing operand');
+                    } else {
+                        const currentDirObj = getDir(currentCwd);
+                        if (currentDirObj && currentDirObj.type === 'dir') {
+                            if (currentDirObj.children[args[1]]) {
+                                terminalInstance.writeln(`mkdir: cannot create directory '${args[1]}': File exists`);
+                            } else {
+                                currentDirObj.children[args[1]] = { type: 'dir', children: {} };
+                            }
+                        } else {
+                            terminalInstance.writeln(`mkdir: cannot create directory '${args[1]}': No such file or directory`);
+                        }
+                    }
+                    prompt();
+                    break;
+                case 'whoami':
+                    terminalInstance.writeln('root');
+                    prompt();
+                    break;
+                case 'ip':
+                    terminalInstance.writeln('eth0: 192.168.1.105');
+                    terminalInstance.writeln('lo: 127.0.0.1');
+                    prompt();
+                    break;
+                case 'sudo':
+                    if (args.length > 1) {
+                        terminalInstance.write(`[sudo] password for root: `);
+                        // Simple simulation: wait a bit then execute
+                        setTimeout(() => {
+                            terminalInstance.writeln(''); // Newline after "password"
+                            const subCmd = args.slice(1).join(' ');
+                            handleCommand(subCmd);
+                        }, 500);
+                        return;
+                    } else {
+                        terminalInstance.writeln('sudo: missing command');
+                        prompt();
+                    }
+                    break;
+                case 'pkg':
+                    if (args[1] === 'install') {
+                        terminalInstance.writeln('Updating repository lists...');
+                        terminalInstance.writeln(`Downloading ${args[2] || 'package'}...`);
+                        terminalInstance.writeln('Installing...');
+                        setTimeout(() => {
+                            terminalInstance.writeln('\x1b[1;32mDone!\x1b[0m');
+                            prompt();
+                        }, 1000);
+                        return;
+                    } else {
+                        terminalInstance.writeln('Usage: pkg install <package_name>');
+                        prompt();
+                    }
+                    break;
+                case 'ping':
+                    if (!args[1]) {
+                        terminalInstance.writeln('Usage: ping <host>');
+                        prompt();
+                    } else {
+                        const host = args[1];
+                        terminalInstance.writeln(`PING ${host} (${host}) 56(84) bytes of data.`);
+                        let count = 0;
+                        const max = 4;
+                        const interval = setInterval(() => {
+                            count++;
+                            const time = (Math.random() * 10 + 20).toFixed(1);
+                            terminalInstance.writeln(`64 bytes from ${host}: icmp_seq=${count} ttl=57 time=${time} ms`);
+                            if (count >= max) {
+                                clearInterval(interval);
+                                terminalInstance.writeln(`--- ${host} ping statistics ---`);
+                                terminalInstance.writeln(`${max} packets transmitted, ${max} received, 0% packet loss, time ${max * 1000}ms`);
+                                terminalInstance.writeln(`rtt min/avg/max/mdev = 23.1/28.4/35.2/4.1 ms`);
+                                prompt();
+                            }
+                        }, 1000);
+                        return;
+                    }
+                    break;
+                case 'nmap':
+                    if (!args[1]) {
+                        terminalInstance.writeln('Usage: nmap <target>');
+                        prompt();
+                    } else {
+                        const target = args[1];
+                        terminalInstance.writeln(`Starting Nmap 7.94 ( https://nmap.org ) at ${new Date().toISOString().split('T')[0]}`);
+                        const latency = (Math.random() * 0.05 + 0.001).toFixed(4);
+                        terminalInstance.writeln(`Nmap scan report for ${target}`);
+                        terminalInstance.writeln(`Host is up (${latency}s latency).`);
+                        const closedPorts = 990 + Math.floor(Math.random() * 10);
+                        terminalInstance.writeln(`Not shown: ${closedPorts} closed tcp ports (reset)`);
+
+                        setTimeout(() => {
+                            terminalInstance.writeln(`PORT    STATE SERVICE`);
+                            const commonPorts = [
+                                { port: 21, service: 'ftp' }, { port: 22, service: 'ssh' }, { port: 23, service: 'telnet' },
+                                { port: 25, service: 'smtp' }, { port: 53, service: 'domain' }, { port: 80, service: 'http' },
+                                { port: 110, service: 'pop3' }, { port: 143, service: 'imap' }, { port: 443, service: 'https' },
+                                { port: 3306, service: 'mysql' }, { port: 3389, service: 'ms-wbt-server' },
+                                { port: 5432, service: 'postgresql' }, { port: 8080, service: 'http-proxy' }
+                            ];
+                            const openPorts = [];
+                            if (Math.random() > 0.5) openPorts.push({ port: 22, service: 'ssh' });
+                            if (Math.random() > 0.2) { openPorts.push({ port: 80, service: 'http' }); openPorts.push({ port: 443, service: 'https' }); }
+                            const extraCount = Math.floor(Math.random() * 4);
+                            for (let i = 0; i < extraCount; i++) {
+                                const randomPort = commonPorts[Math.floor(Math.random() * commonPorts.length)];
+                                if (!openPorts.find(p => p.port === randomPort.port)) openPorts.push(randomPort);
+                            }
+                            openPorts.sort((a, b) => a.port - b.port);
+                            openPorts.forEach(p => {
+                                terminalInstance.writeln(`${p.port}/tcp  \x1b[1;32mopen\x1b[0m  ${p.service}`);
+                            });
+                            const time = (Math.random() * 2 + 0.5).toFixed(2);
+                            terminalInstance.writeln(`\nNmap done: 1 IP address (1 host up) scanned in ${time} seconds`);
+                            prompt();
+                        }, 1500);
+                        return;
+                    }
+                    break;
+                default:
+                    terminalInstance.writeln(`bash: ${cmd}: command not found`);
+                    prompt();
+            }
+        }
     }
 
     // Override navigateTo to handle terminal initialization
