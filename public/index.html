@@ -111,6 +111,16 @@
                         <li data-route="temp/sms">TEMP_SMS</li>
                     </ul>
                 </div>
+
+                <div class="category">
+                    <div class="category-header" data-category="settings">
+                        <span class="category-icon">▶</span>
+                        <span>SETTINGS</span>
+                    </div>
+                    <ul class="category-items">
+                        <li data-route="settings/connection">CONNECTION</li>
+                    </ul>
+                </div>
             </nav>
 
             <section class="content">
@@ -536,6 +546,25 @@
                 <div id="sms-inbox" class="inbox-list"></div>
                 <div id="sms-viewer" class="message-viewer" style="display: none;"></div>
             </div>
+        </div>
+    </div>
+
+    <!-- Connection Settings Tool -->
+    <div id="connection-tool" class="tool-panel">
+        <h2>// REMOTE_CONNECTION</h2>
+        <div class="tool-interface">
+            <div class="input-group">
+                <label for="remote-url">REMOTE_SERVER_URL:</label>
+                <input type="text" id="remote-url" class="cyber-text-input" placeholder="http://<AWS_IP>:3000">
+                <div class="demo-note" style="margin-top: 5px;">
+                    Leave empty to use local server (default).
+                </div>
+            </div>
+            <div class="controls">
+                <button id="btn-save-connection" class="cyber-btn">SAVE & CONNECT</button>
+                <button id="btn-test-connection" class="cyber-btn warning">TEST CONNECTION</button>
+            </div>
+            <div id="connection-status" class="vt-status"></div>
         </div>
     </div>
 

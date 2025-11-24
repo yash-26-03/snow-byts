@@ -27,7 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'network/pcap': 'pcap',
         'terminal/shell': 'terminal',
         'temp/email': 'temp-email',
-        'temp/sms': 'temp-sms'
+        'temp/sms': 'temp-sms',
+        'settings/connection': 'connection'
     };
 
     // Category names mapping
@@ -93,6 +94,27 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="breadcrumb-item">${category}</span>
             <span class="breadcrumb-item">${tool}</span>
         `;
+    }
+
+    // --- Remote Connection Helper ---
+    function getRemoteUrl() {
+        return localStorage.getItem('cyber_remote_url') || '';
+    }
+
+    function getApiUrl(path) {
+        const remoteUrl = getRemoteUrl();
+        if (remoteUrl) {
+            // Remove trailing slash from remoteUrl and leading slash from path
+            const baseUrl = remoteUrl.replace(/\/$/, '');
+            const endpoint = path.replace(/^\//, '');
+            return `${baseUrl}/${endpoint}`;
+        }
+        return path;
+    }
+
+    function getSocketUrl() {
+        const remoteUrl = getRemoteUrl();
+        return remoteUrl || undefined; // undefined means auto-connect to current host
     }
 
     // Navigate to route
@@ -806,7 +828,7 @@ document.addEventListener('DOMContentLoaded', () => {
             terminalInstance.writeln('');
 
             // Connect socket
-            if (!socket) socket = io();
+            if (!socket) socket = io(getSocketUrl());
 
             // Forward input to server
             terminalInstance.onData(data => {
@@ -1541,7 +1563,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Stop Live Capture
     document.getElementById('btn-stop-capture').addEventListener('click', async () => {
         try {
-            const response = await fetch('/api/pcap/capture/stop', {
+            const response = await fetch(getApiUrl('/api/pcap/capture/stop'), {
                 method: 'POST'
             });
 
@@ -1625,7 +1647,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('pcapFile', file);
 
-            const response = await fetch('/api/pcap/upload', {
+            const response = await fetch(getApiUrl('/api/pcap/upload'), {
                 method: 'POST',
                 body: formData
             });
@@ -1789,7 +1811,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchInterfaces() {
         try {
-            const response = await fetch('/api/pcap/interfaces');
+            const response = await fetch(getApiUrl('/api/pcap/interfaces'));
             const data = await response.json();
 
             interfaceSelect.innerHTML = '';
@@ -1874,7 +1896,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnStopCapture.addEventListener('click', async () => {
         try {
-            const response = await fetch('/api/pcap/capture/stop', { method: 'POST' });
+            const response = await fetch('/api/pcap/capture/stop', {
+                method: 'POST'
+            });
             const result = await response.json();
 
             if (result.success) {
@@ -1941,6 +1965,45 @@ document.addEventListener('DOMContentLoaded', () => {
     usernameInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
             btnSaveUsername.click();
+        }
+    });
+
+    // --- Connection Settings Logic ---
+    const remoteUrlInput = document.getElementById('remote-url');
+    const btnSaveConnection = document.getElementById('btn-save-connection');
+    const btnTestConnection = document.getElementById('btn-test-connection');
+    const connectionStatus = document.getElementById('connection-status');
+
+    // Load saved URL
+    remoteUrlInput.value = getRemoteUrl();
+
+    btnSaveConnection.addEventListener('click', () => {
+        const url = remoteUrlInput.value.trim();
+        localStorage.setItem('cyber_remote_url', url);
+        connectionStatus.innerHTML = '<p style="color: #00ff00;">SETTINGS SAVED. RELOAD TO APPLY.</p>';
+        setTimeout(() => location.reload(), 1000);
+    });
+
+    btnTestConnection.addEventListener('click', async () => {
+        const url = remoteUrlInput.value.trim();
+        if (!url) {
+            connectionStatus.innerHTML = '<p style="color: #00ff00;">USING LOCAL SERVER (OK)</p>';
+            return;
+        }
+
+        connectionStatus.innerHTML = '<p style="color: #ffff00;">TESTING CONNECTION...</p>';
+        try {
+            // Try to fetch a simple endpoint (e.g., /) or check if we can reach it
+            // Since we don't have a dedicated ping endpoint, we'll try fetching the home page or an API
+            const testUrl = url.replace(/\/$/, '') + '/api/pcap/interfaces'; // Use an API endpoint
+            const response = await fetch(testUrl);
+            if (response.ok) {
+                connectionStatus.innerHTML = '<p style="color: #00ff00;">CONNECTION SUCCESSFUL!</p>';
+            } else {
+                connectionStatus.innerHTML = `<p style="color: #ff3333;">CONNECTION FAILED: ${response.status}</p>`;
+            }
+        } catch (error) {
+            connectionStatus.innerHTML = `<p style="color: #ff3333;">CONNECTION ERROR: ${error.message}</p>`;
         }
     });
 
