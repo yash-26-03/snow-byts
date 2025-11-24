@@ -2032,6 +2032,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSaveConnection.addEventListener('click', () => {
         const url = remoteUrlInput.value.trim();
         localStorage.setItem('cyber_remote_url', url);
+        connectionStatus.classList.add('active');
         connectionStatus.innerHTML = '<p style="color: #00ff00;">SETTINGS SAVED. RELOAD TO APPLY.</p>';
         setTimeout(() => location.reload(), 1000);
     });
@@ -2039,10 +2040,12 @@ document.addEventListener('DOMContentLoaded', () => {
     btnTestConnection.addEventListener('click', async () => {
         const url = remoteUrlInput.value.trim();
         if (!url) {
+            connectionStatus.classList.add('active');
             connectionStatus.innerHTML = '<p style="color: #00ff00;">USING LOCAL SERVER (OK)</p>';
             return;
         }
 
+        connectionStatus.classList.add('active');
         connectionStatus.innerHTML = '<p style="color: #ffff00;">TESTING CONNECTION...</p>';
         try {
             // Try to fetch a simple endpoint (e.g., /) or check if we can reach it
