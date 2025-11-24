@@ -56,7 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'vt-ip': 'IP/DOMAIN_LOOKUP',
         'terminal': 'WEB_TERMINAL',
         'temp-email': 'TEMP_EMAIL',
-        'temp-sms': 'TEMP_SMS'
+        'temp-sms': 'TEMP_SMS',
+        'connection': 'REMOTE_CONNECTION'
     };
 
     // Category expand/collapse logic
