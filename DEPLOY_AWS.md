@@ -113,16 +113,25 @@ Inside your project directory on the server:
     docker build -t cyber-tools .
     ```
 
-2.  **Run the container**:
-    ```bash
-    # Run in background (-d), map port 3000 (-p), and restart automatically
-    docker run -d -p 3000:3000 --restart always --name cyber-app cyber-tools
-    ```
+### 6. Run the Docker Container
+Run the container with the following command. Note the `--network host` and `--cap-add=NET_ADMIN` flags, which are required for the **Live Packet Analyzer** to capture network traffic.
 
-## Step 7: Access Your App
+```bash
+sudo docker run -d \
+  --name cyber-tools \
+  --network host \
+  --cap-add=NET_ADMIN \
+  --restart unless-stopped \
+  cyber-tools-app
+```
 
-Open your browser and visit:
-`http://YOUR_PUBLIC_IP:3000`
+> **Note**: `--network host` allows the container to share the host's network stack, which is necessary for `tshark` to see the server's traffic. `--cap-add=NET_ADMIN` grants the necessary privileges to capture packets.
+
+### 7. Access the Application
+Open your browser and navigate to:
+`http://<your-ec2-public-ip>:3000`
+
+(Since we are using `--network host`, the app binds directly to port 3000 on the host).
 
 You should see your Cyber Security Tools Portal, and the terminal should be fully interactive!
 

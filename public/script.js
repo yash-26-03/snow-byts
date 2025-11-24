@@ -799,16 +799,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (terminalMode === 'real') {
-            // Real-time mode (Coming Soon)
+            // Real-time mode
             terminalInstance.writeln('\x1b[1;32m╔═══════════════════════════════════════════════════════════╗\x1b[0m');
             terminalInstance.writeln('\x1b[1;32m║         REAL-TIME TERMINAL (EXPERIMENTAL)                ║\x1b[0m');
             terminalInstance.writeln('\x1b[1;32m╚═══════════════════════════════════════════════════════════╝\x1b[0m');
             terminalInstance.writeln('');
-            terminalInstance.writeln('\x1b[1;33m[!] STATUS: COMING SOON / UNDER MAINTENANCE\x1b[0m');
-            terminalInstance.writeln('\x1b[1;33m[!] Please use the SIMULATED mode for now.\x1b[0m');
 
-            // Optional: Connect socket if we wanted to enable it, but user asked to wait
-            // socket = io(); ...
+            // Connect socket
+            if (!socket) socket = io();
+
+            // Forward input to server
+            terminalInstance.onData(data => {
+                if (socket) {
+                    socket.emit('input', data);
+                }
+            });
+
+            // Receive output from server
+            socket.on('output', data => {
+                terminalInstance.write(data);
+            });
+
+            // Initial resize
+            socket.emit('resize', { cols: terminalInstance.cols, rows: terminalInstance.rows });
 
         } else {
             // Simulated Mode
@@ -1763,6 +1776,129 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
+
+    // --- Live Packet Capture Logic ---
+    const btnStartCapture = document.getElementById('btn-start-capture');
+    const btnStopCapture = document.getElementById('btn-stop-capture');
+    const interfaceSelect = document.getElementById('network-interface');
+    const captureIndicator = document.getElementById('capture-indicator');
+    const livePacketCount = document.getElementById('live-packet-count');
+    const liveByteCount = document.getElementById('live-byte-count');
+    const packetTableBody = document.getElementById('packet-table-body');
+    let packetCounter = 0;
+
+    async function fetchInterfaces() {
+        try {
+            const response = await fetch('/api/pcap/interfaces');
+            const data = await response.json();
+
+            interfaceSelect.innerHTML = '';
+            if (data.interfaces && data.interfaces.length > 0) {
+                data.interfaces.forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface.name;
+                    option.textContent = `${iface.id}. ${iface.name} ${iface.description ? `(${iface.description})` : ''} ${iface.active ? '[ACTIVE]' : ''}`;
+                    interfaceSelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.textContent = data.warning || 'No interfaces found';
+                interfaceSelect.appendChild(option);
+            }
+        } catch (error) {
+            console.error('Error fetching interfaces:', error);
+            interfaceSelect.innerHTML = '<option>Error loading interfaces</option>';
+        }
+    }
+
+    // Load interfaces when PCAP tool is opened
+    document.querySelector('[data-route="network/pcap"]').addEventListener('click', () => {
+        fetchInterfaces();
+    });
+
+    btnStartCapture.addEventListener('click', async () => {
+        const iface = interfaceSelect.value;
+        const filter = document.getElementById('capture-filter').value;
+
+        try {
+            const response = await fetch('/api/pcap/capture/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interface: iface, filter })
+            });
+            const result = await response.json();
+
+            if (result.success) {
+                btnStartCapture.disabled = true;
+                btnStopCapture.disabled = false;
+                captureIndicator.classList.add('active');
+                packetCounter = 0;
+                packetTableBody.innerHTML = ''; // Clear table
+                document.getElementById('pcap-stats').style.display = 'block';
+
+                // Initialize socket if not already
+                if (!socket) socket = io();
+
+                // Listen for packets
+                socket.on('live-packet', (packet) => {
+                    packetCounter++;
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${packetCounter}</td>
+                        <td>${new Date(packet.timestamp * 1000).toLocaleTimeString()}</td>
+                        <td>${packet.src}</td>
+                        <td>${packet.srcPort}</td>
+                        <td>${packet.dst}</td>
+                        <td>${packet.dstPort}</td>
+                        <td><span class="protocol-badge ${packet.protocol.toLowerCase()}">${packet.protocol}</span></td>
+                        <td>${packet.length}</td>
+                        <td>${packet.flags ? `Flags: [${packet.flags}]` : ''}</td>
+                    `;
+                    packetTableBody.insertBefore(row, packetTableBody.firstChild);
+                    if (packetTableBody.children.length > 100) {
+                        packetTableBody.removeChild(packetTableBody.lastChild);
+                    }
+                });
+
+                socket.on('capture-stats', (stats) => {
+                    livePacketCount.textContent = stats.packets;
+                    liveByteCount.textContent = formatBytes(stats.bytes);
+                });
+            } else {
+                alert('Failed to start capture: ' + result.error);
+            }
+        } catch (error) {
+            alert('Error starting capture: ' + error.message);
+        }
+    });
+
+    btnStopCapture.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/pcap/capture/stop', { method: 'POST' });
+            const result = await response.json();
+
+            if (result.success) {
+                btnStartCapture.disabled = false;
+                btnStopCapture.disabled = true;
+                captureIndicator.classList.remove('active');
+                if (socket) {
+                    socket.off('live-packet');
+                    socket.off('capture-stats');
+                }
+            }
+        } catch (error) {
+            console.error('Error stopping capture:', error);
+        }
+    });
+
+    function formatBytes(bytes, decimals = 2) {
+        if (!+bytes) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+    }
 
     // --- Username Onboarding ---
     const usernameModal = document.getElementById('username-modal');

@@ -7,7 +7,9 @@ WORKDIR /usr/src/app
 
 # Install build dependencies for node-pty (python3, make, g++)
 # These are usually present in the standard node image, but good to be explicit if using slim
-RUN apt-get update && apt-get install -y python3 make g++ netcat-openbsd iputils-ping && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y python3 make g++ netcat-openbsd iputils-ping tshark && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy package.json and package-lock.json
 COPY package*.json ./
