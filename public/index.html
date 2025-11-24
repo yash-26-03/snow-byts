@@ -102,16 +102,6 @@
                     </ul>
                 </div>
 
-                <div class="category">
-                    <div class="category-header" data-category="temp">
-                        <span class="category-icon">▶</span>
-                        <span>TEMP_SERVICES</span>
-                    </div>
-                    <ul class="category-items">
-                        <li data-route="temp/email">TEMP_EMAIL</li>
-                        <li data-route="temp/sms">TEMP_SMS</li>
-                    </ul>
-                </div>
 
                 <div class="category">
                     <div class="category-header" data-category="settings">
@@ -398,9 +388,21 @@
                                 <button id="btn-stop-capture" class="cyber-btn warning" disabled>STOP CAPTURE</button>
                                 <span id="capture-indicator" class="capture-indicator"></span>
                             </div>
+
+                            <!-- Capture Status and Progress -->
+                            <div id="capture-status-bar" class="capture-status-bar" style="display: none;">
+                                <div class="status-text">
+                                    <span id="capture-status-text">INITIALIZING...</span>
+                                </div>
+                                <div class="progress-bar">
+                                    <div id="capture-progress" class="progress-fill"></div>
+                                </div>
+                            </div>
+
                             <div id="live-capture-stats" class="live-stats">
                                 <span>Packets: <strong id="live-packet-count">0</strong></span>
                                 <span>Bytes: <strong id="live-byte-count">0</strong></span>
+                                <span>Rate: <strong id="live-packet-rate">0 pkt/s</strong></span>
                             </div>
                         </div>
 
@@ -472,6 +474,26 @@
                 <div id="terminal-tool" class="tool-panel">
                     <h2>// WEB_TERMINAL</h2>
                     <div class="tool-interface">
+                        <!-- Server Selector -->
+                        <div class="server-selector">
+                            <label>
+                                <span class="connection-indicator" id="terminal-connection-indicator"></span>
+                                TERMINAL SERVER:
+                            </label>
+                            <div class="server-selector-row">
+                                <select id="terminal-server-select" class="cyber-select">
+                                    <option value="local">Local (localhost:3000)</option>
+                                    <option value="default">Default Remote</option>
+                                    <option value="custom">Custom...</option>
+                                </select>
+                            </div>
+                            <div class="custom-url-input" id="terminal-custom-url">
+                                <input type="text" id="terminal-custom-url-input" class="cyber-text-input"
+                                    placeholder="http://<IP>:3000">
+                                <button id="btn-terminal-connect-custom" class="cyber-btn">CONNECT</button>
+                            </div>
+                        </div>
+
                         <div class="terminal-warning">
                             <strong>⚠️ WARNING:</strong> This terminal executes real commands on your system. Use with
                             caution!
@@ -481,95 +503,59 @@
                 </div>
 
                 <!-- Temp Email Tool -->
-                <div id="temp-email-tool" class="tool-panel">
-                    <h2>// TEMPORARY_EMAIL</h2>
+
+                <!-- Connection Settings Tool -->
+                <div id="connection-tool" class="tool-panel">
+                    <h2>// REMOTE_CONNECTION</h2>
                     <div class="tool-interface">
-                        <div class="temp-controls">
-                            <button id="btn-generate-email" class="cyber-btn">GENERATE EMAIL >></button>
-                            <div id="email-display" class="email-display" style="display: none;">
-                                <label>YOUR TEMP EMAIL:</label>
-                                <div class="email-copy-container">
-                                    <input type="text" id="generated-email" readonly class="cyber-text-input">
-                                    <button id="btn-copy-email" class="cyber-btn">COPY</button>
-                                </div>
-                                <div id="email-simulation-warning" class="simulation-warning"
-                                    style="color: #ffaa00; margin-top: 5px; font-size: 0.9em; display: none;">
-                                    ⚠️ NOTE: Using simulation fallback (API unavailable).
-                                </div>
+                        <!-- Default Server Section -->
+                        <h3 style="margin-bottom: 15px;">DEFAULT SERVER</h3>
+                        <div class="input-group">
+                            <label for="remote-url">DEFAULT_SERVER_URL:</label>
+                            <input type="text" id="remote-url" class="cyber-text-input"
+                                placeholder="e.g., 54.123.45.67 or http://54.123.45.67:3000">
+                            <div class="demo-note" style="margin-top: 5px;">
+                                Enter IP address or full URL. Leave empty for local server.
+                            </div>
+                        </div>
+                        <div class="controls">
+                            <button id="btn-save-connection" class="cyber-btn">SAVE AS DEFAULT</button>
+                            <button id="btn-test-connection" class="cyber-btn warning">TEST CONNECTION</button>
+                        </div>
+                        <div id="connection-status" class="vt-status"></div>
+
+                        <hr style="border-color: var(--border-color); margin: 30px 0;">
+
+                        <!-- Saved Servers Section -->
+                        <h3 style="margin-bottom: 15px;">SAVED SERVERS</h3>
+                        <div id="saved-servers-list" class="saved-servers-list">
+                            <!-- Servers will be dynamically added here -->
+                        </div>
+
+                        <!-- Add Server Form -->
+                        <div id="add-server-form"
+                            style="display: none; margin-top: 15px; padding: 15px; border: 1px solid var(--dim-color); background: rgba(0,255,0,0.05);">
+                            <div class="input-group">
+                                <label for="new-server-name">SERVER_NAME:</label>
+                                <input type="text" id="new-server-name" class="cyber-text-input"
+                                    placeholder="e.g., AWS Production">
+                            </div>
+                            <div class="input-group">
+                                <label for="new-server-url">SERVER_URL:</label>
+                                <input type="text" id="new-server-url" class="cyber-text-input"
+                                    placeholder="e.g., 54.123.45.67 or http://54.123.45.67:3000">
+                            </div>
+                            <div class="controls">
+                                <button id="btn-save-server" class="cyber-btn">SAVE SERVER</button>
+                                <button id="btn-cancel-server" class="cyber-btn warning">CANCEL</button>
                             </div>
                         </div>
 
-                        <div id="email-inbox-container" style="display: none;">
-                            <div
-                                style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                                <h3>INBOX (<span id="email-count">0</span>)</h3>
-                                <button id="btn-reload-email" class="cyber-btn">🔄 RELOAD</button>
-                            </div>
-                            <button id="btn-simulate-email" class="cyber-btn"
-                                style="margin-bottom: 15px; display: none;">RECEIVE TEST EMAIL
-                                (SIMULATION)</button>
-                        </div>
-                        <div id="email-inbox" class="inbox-list"></div>
-                        <div id="email-viewer" class="message-viewer" style="display: none;"></div>
+                        <button id="btn-add-server" class="cyber-btn" style="margin-top: 15px;">+ ADD SERVER</button>
                     </div>
                 </div>
-    </div>
 
-    <!-- Temp SMS Tool -->
-    <div id="temp-sms-tool" class="tool-panel">
-        <h2>// TEMPORARY_SMS</h2>
-        <div class="tool-interface">
-            <div class="temp-controls">
-                <button id="btn-generate-sms" class="cyber-btn">GENERATE PHONE >></button>
-                <div id="sms-display" class="email-display" style="display: none;">
-                    <label>YOUR TEMP PHONE:</label>
-                    <div class="email-copy-container">
-                        <input type="text" id="generated-phone" readonly class="cyber-text-input">
-                        <button id="btn-copy-phone" class="cyber-btn">COPY</button>
-                    </div>
-                    <div class="demo-note">💡 Demo: Use "Simulate SMS" button to test</div>
-                    <div class="simulation-warning" style="color: #ffaa00; margin-top: 5px; font-size: 0.9em;">
-                        ⚠️ NOTE: This is a simulation. Real SMS cannot be received.
-                    </div>
-                </div>
-            </div>
-
-            <div id="sms-inbox-container" style="display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                    <h3>MESSAGES (<span id="sms-count">0</span>)</h3>
-                    <button id="btn-reload-sms" class="cyber-btn">🔄 RELOAD</button>
-                </div>
-                <button id="btn-simulate-sms" class="cyber-btn" style="margin-bottom: 15px;">RECEIVE TEST
-                    SMS
-                    (DEMO)</button>
-                <div id="sms-loading" class="loading-indicator" style="display: none;">⏳ Loading messages...
-                </div>
-                <div id="sms-inbox" class="inbox-list"></div>
-                <div id="sms-viewer" class="message-viewer" style="display: none;"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Connection Settings Tool -->
-    <div id="connection-tool" class="tool-panel">
-        <h2>// REMOTE_CONNECTION</h2>
-        <div class="tool-interface">
-            <div class="input-group">
-                <label for="remote-url">REMOTE_SERVER_URL:</label>
-                <input type="text" id="remote-url" class="cyber-text-input" placeholder="http://<AWS_IP>:3000">
-                <div class="demo-note" style="margin-top: 5px;">
-                    Leave empty to use local server (default).
-                </div>
-            </div>
-            <div class="controls">
-                <button id="btn-save-connection" class="cyber-btn">SAVE & CONNECT</button>
-                <button id="btn-test-connection" class="cyber-btn warning">TEST CONNECTION</button>
-            </div>
-            <div id="connection-status" class="vt-status"></div>
-        </div>
-    </div>
-
-    </main>
+        </main>
     </div>
     <!-- Terminal Mode Modal -->
     <div id="terminal-mode-modal" class="modal-overlay">

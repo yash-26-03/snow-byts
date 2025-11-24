@@ -29,38 +29,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     updateServerStatus();
 
-    // Helper function to normalize server URL (accepts IP or full URL)
-    function normalizeServerUrl(input) {
-        if (!input || input.trim() === '') return '';
-
-        input = input.trim();
-
-        // If it already starts with http:// or https://, return as-is
-        if (input.startsWith('http://') || input.startsWith('https://')) {
-            return input;
-        }
-
-        // Check if it's an IP address (with or without port)
-        // Matches: 192.168.1.1, 192.168.1.1:3000, localhost, localhost:3000
-        const ipPattern = /^[\d\.]+(:?\d+)?$|^localhost(:?\d+)?$/;
-
-        if (ipPattern.test(input)) {
-            // If no port specified, add :3000
-            if (!input.includes(':')) {
-                input += ':3000';
-            }
-            return 'http://' + input;
-        }
-
-        // If it looks like a domain name without protocol
-        // Add http:// and :3000 if no port
-        if (!input.includes(':')) {
-            return 'http://' + input + ':3000';
-        }
-
-        return 'http://' + input;
-    }
-
     // Route to tool ID mapping
     const routeMap = {
         'encoders/base64': 'base64',
@@ -902,8 +870,22 @@ document.addEventListener('DOMContentLoaded', () => {
             terminalInstance.writeln('');
 
             // Connect socket
-            const savedUrl = localStorage.getItem('cyber_terminal_server_url') || getSocketUrl();
-            connectTerminalSocket(savedUrl);
+            if (!socket) socket = io(getSocketUrl());
+
+            // Forward input to server
+            terminalInstance.onData(data => {
+                if (socket) {
+                    socket.emit('input', data);
+                }
+            });
+
+            // Receive output from server
+            socket.on('output', data => {
+                terminalInstance.write(data);
+            });
+
+            // Initial resize
+            socket.emit('resize', { cols: terminalInstance.cols, rows: terminalInstance.rows });
 
         } else {
             // Simulated Mode
@@ -1170,89 +1152,6 @@ document.addEventListener('DOMContentLoaded', () => {
         terminalInitialized = true;
     }
 
-    function connectTerminalSocket(url) {
-        if (socket) {
-            socket.disconnect();
-            socket = null;
-        }
-
-        const indicator = document.getElementById('terminal-connection-indicator');
-        if (indicator) {
-            indicator.className = 'connection-indicator connecting';
-            indicator.title = `Connecting to ${url}...`;
-        }
-
-        terminalInstance.writeln(`\x1b[1;33mConnecting to ${url}...\x1b[0m`);
-        terminalInstance.writeln(`\x1b[1;30mChecking network reachability...\x1b[0m`);
-
-        // Pre-flight check
-        const checkUrl = url.replace(/\/$/, '') + '/socket.io/socket.io.js';
-
-        fetch(checkUrl, { method: 'HEAD', mode: 'no-cors' })
-            .then(() => {
-                // Reachable (or at least DNS resolved), try connecting
-                connectSocket();
-            })
-            .catch(err => {
-                terminalInstance.writeln(`\x1b[1;31mNETWORK ERROR: Cannot reach server at ${url}\x1b[0m`);
-                terminalInstance.writeln(`\x1b[1;33mTroubleshooting:\x1b[0m`);
-                terminalInstance.writeln(`1. Is the server running on the VM?`);
-                terminalInstance.writeln(`2. Is port 3000 open in AWS Security Group?`);
-                terminalInstance.writeln(`3. Did you update server.js on the VM to listen on 0.0.0.0?`);
-                terminalInstance.writeln(`   (Run 'netstat -tulpn | grep 3000' on VM to check)`);
-
-                if (indicator) {
-                    indicator.className = 'connection-indicator';
-                    indicator.title = `Network Unreachable`;
-                }
-
-                // Try connecting anyway in case fetch failed due to CORS but socket might work
-                connectSocket();
-            });
-
-        function connectSocket() {
-            if (socket) return; // Already connecting/connected
-
-            socket = io(url, {
-                transports: ['websocket', 'polling'],
-                reconnectionAttempts: 3,
-                timeout: 5000
-            });
-
-            socket.on('connect', () => {
-                terminalInstance.writeln(`\x1b[1;32mConnected to ${url}\x1b[0m`);
-                terminalInstance.writeln('');
-                if (indicator) {
-                    indicator.className = 'connection-indicator connected';
-                    indicator.title = `Connected to ${url}`;
-                }
-                // Initial resize
-                socket.emit('resize', { cols: terminalInstance.cols, rows: terminalInstance.rows });
-            });
-
-            socket.on('connect_error', (err) => {
-                terminalInstance.writeln(`\x1b[1;31mConnection Error: ${err.message}\x1b[0m`);
-                if (indicator) {
-                    indicator.className = 'connection-indicator';
-                    indicator.title = `Connection Failed: ${err.message}`;
-                }
-            });
-
-            // Forward input to server
-            // We need to clear previous listeners if any, but since we recreate socket, it's fine.
-            // However, terminalInstance.onData adds a listener every time. 
-            // We should ensure we don't add multiple listeners to terminalInstance.
-            // For now, let's assume initializeTerminal only calls this once or we handle it.
-            // Actually, initializeTerminal adds the listener. We need to make sure that listener uses the CURRENT socket.
-            // The listener in initializeTerminal uses the global 'socket' variable, so it should be fine as long as we update that variable.
-
-            // Receive output from server
-            socket.on('output', data => {
-                terminalInstance.write(data);
-            });
-        }
-    }
-
     // Override navigateTo to handle terminal initialization
     const originalNavigateTo = navigateTo;
     navigateTo = function (route) {
@@ -1282,6 +1181,670 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     let currentEmailId = null;
+    let currentSMSId = null;
+    let emailPollInterval = null;
+    let smsPollInterval = null;
+
+    // Temp Email Logic
+    document.getElementById('btn-generate-email').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/temp/email/generate', { method: 'POST' });
+            const data = await response.json();
+
+            currentEmailId = data.id;
+            document.getElementById('generated-email').value = data.email;
+            document.getElementById('email-display').style.display = 'block';
+            document.getElementById('email-inbox-container').style.display = 'block';
+
+            // Check if using simulation
+            const isSimulation = data.isSimulation;
+            document.getElementById('btn-simulate-email').style.display = isSimulation ? 'block' : 'none';
+            document.getElementById('email-simulation-warning').style.display = isSimulation ? 'block' : 'none';
+
+            // Start polling for emails
+            if (emailPollInterval) clearInterval(emailPollInterval);
+            emailPollInterval = setInterval(() => fetchEmailInbox(), 15000);
+            fetchEmailInbox();
+        } catch (error) {
+            alert('Error generating email: ' + error.message);
+        }
+    });
+
+    document.getElementById('btn-copy-email').addEventListener('click', () => {
+        const email = document.getElementById('generated-email').value;
+        navigator.clipboard.writeText(email);
+        const btn = document.getElementById('btn-copy-email');
+        btn.textContent = 'COPIED!';
+        setTimeout(() => btn.textContent = 'COPY', 2000);
+    });
+
+    document.getElementById('btn-simulate-email').addEventListener('click', async () => {
+        if (!currentEmailId) return;
+
+        const senders = ['support@example.com', 'noreply@service.com', 'admin@test.com'];
+        const subjects = ['Welcome!', 'Verify your account', 'Important notification', 'Test email'];
+        const bodies = [
+            'Welcome to our service! Please verify your email address.',
+            'Your verification code is: 123456',
+            'This is an important notification about your account.',
+            'This is a test email from the demo system.'
+        ];
+
+        const from = senders[Math.floor(Math.random() * senders.length)];
+        const subject = subjects[Math.floor(Math.random() * subjects.length)];
+        const body = bodies[Math.floor(Math.random() * bodies.length)];
+
+        try {
+            const response = await fetch(`/api/temp/email/${currentEmailId}/receive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from, subject, body })
+            });
+            const result = await response.json();
+            console.log('Email simulated:', result);
+            fetchEmailInbox();
+        } catch (error) {
+            console.error('Error simulating email:', error);
+            alert('Error simulating email: ' + error.message);
+        }
+    });
+
+
+
+    async function fetchEmailInbox() {
+        if (!currentEmailId) return;
+
+        console.log('Fetching inbox for:', currentEmailId);
+
+        // Show loading
+        document.getElementById('email-loading').style.display = 'block';
+
+        try {
+            const response = await fetch(`/api/temp/email/${currentEmailId}/inbox`);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    // Session expired
+                    clearInterval(emailPollInterval);
+                    alert('Email session expired. Please generate a new email.');
+                    document.getElementById('email-display').style.display = 'none';
+                    document.getElementById('email-inbox-container').style.display = 'none';
+                    currentEmailId = null;
+                    return;
+                }
+                if (response.status === 403 || response.status === 429) {
+                    // Rate limited or forbidden
+                    clearInterval(emailPollInterval);
+                    console.warn(`Stopped polling due to status ${response.status}`);
+                    const msg = response.status === 429 ? 'Rate limit reached.' : 'Access denied.';
+                    alert(`${msg} Auto-refresh stopped. Please use the Reload button manually.`);
+                    return;
+                }
+                throw new Error(`Server returned ${response.status}`);
+            }
+            const data = await response.json();
+
+            console.log('Inbox data:', data);
+            if (data.inbox) {
+                displayEmailInbox(data.inbox);
+            }
+        } catch (error) {
+            console.error('Error fetching inbox:', error);
+        } finally {
+            // Hide loading
+            document.getElementById('email-loading').style.display = 'none';
+        }
+    }
+
+    function displayEmailInbox(inbox) {
+        const inboxEl = document.getElementById('email-inbox');
+        document.getElementById('email-count').textContent = inbox.length;
+
+        console.log('Displaying inbox with', inbox.length, 'emails');
+
+        if (inbox.length === 0) {
+            inboxEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--dim-color);">No emails yet...</div>';
+            return;
+        }
+
+        inboxEl.innerHTML = inbox.map(msg => `
+            <div class="inbox-item ${msg.read ? '' : 'unread'}" data-message-id="${msg.id}">
+                <div class="inbox-item-header">
+                    <span class="inbox-item-from">${msg.from}</span>
+                    <span class="inbox-item-time">${new Date(msg.receivedAt).toLocaleTimeString()}</span>
+                </div>
+                <div class="inbox-item-subject">${msg.subject}</div>
+                <div class="inbox-item-preview">${msg.body.substring(0, 100)}...</div>
+            </div>
+        `).join('');
+
+        // Add click handlers
+        inboxEl.querySelectorAll('.inbox-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const msgId = item.dataset.messageId;
+                const message = inbox.find(m => m.id === msgId);
+                displayEmailMessage(message);
+            });
+        });
+    }
+
+    function displayEmailMessage(message) {
+        const viewer = document.getElementById('email-viewer');
+        viewer.innerHTML = `
+            <div class="message-viewer-header">
+                <div class="message-viewer-from"><strong>From:</strong> ${message.from}</div>
+                <div class="message-viewer-subject">${message.subject}</div>
+                <div class="message-viewer-time">${new Date(message.receivedAt).toLocaleString()}</div>
+            </div>
+            <div class="message-viewer-body">${message.body}</div>
+            <div class="message-viewer-close">
+                <button class="cyber-btn" id="btn-close-email-viewer">CLOSE</button>
+            </div>
+        `;
+        viewer.style.display = 'block';
+
+        document.getElementById('btn-close-email-viewer').addEventListener('click', () => {
+            viewer.style.display = 'none';
+        });
+
+        // Mark as read
+        if (!message.read) {
+            fetch(`/api/temp/email/${currentEmailId}/message/${message.id}/read`, { method: 'PUT' });
+            message.read = true;
+        }
+    }
+
+    // Reload email inbox button
+    document.getElementById('btn-reload-email').addEventListener('click', () => {
+        fetchEmailInbox();
+    });
+
+    // Temp SMS Logic
+    document.getElementById('btn-generate-sms').addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/temp/sms/generate', { method: 'POST' });
+            const data = await response.json();
+
+            currentSMSId = data.id;
+            document.getElementById('generated-phone').value = data.phone;
+            document.getElementById('sms-display').style.display = 'block';
+            document.getElementById('sms-inbox-container').style.display = 'block';
+
+            // Start polling for SMS
+            if (smsPollInterval) clearInterval(smsPollInterval);
+            smsPollInterval = setInterval(() => fetchSMSMessages(), 3000);
+            fetchSMSMessages();
+        } catch (error) {
+            alert('Error generating phone: ' + error.message);
+        }
+    });
+
+    document.getElementById('btn-copy-phone').addEventListener('click', () => {
+        const phone = document.getElementById('generated-phone').value;
+        navigator.clipboard.writeText(phone);
+        const btn = document.getElementById('btn-copy-phone');
+        btn.textContent = 'COPIED!';
+        setTimeout(() => btn.textContent = 'COPY', 2000);
+    });
+
+    document.getElementById('btn-simulate-sms').addEventListener('click', async () => {
+        if (!currentSMSId) return;
+
+        const senders = ['+1 (555) 123-4567', '+1 (666) 987-6543', '+1 (777) 555-0000'];
+        const messages = [
+            'Your verification code is: 789012',
+            'Welcome! Your account has been created.',
+            'This is a test SMS message.',
+            'Important: Please verify your phone number.'
+        ];
+
+        const from = senders[Math.floor(Math.random() * senders.length)];
+        const body = messages[Math.floor(Math.random() * messages.length)];
+
+        try {
+            await fetch(`/api/temp/sms/${currentSMSId}/receive`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from, body })
+            });
+            fetchSMSMessages();
+        } catch (error) {
+            alert('Error simulating SMS: ' + error.message);
+        }
+    });
+
+    async function fetchSMSMessages() {
+        if (!currentSMSId) return;
+
+        // Show loading
+        document.getElementById('sms-loading').style.display = 'block';
+
+        try {
+            const response = await fetch(`/api/temp/sms/${currentSMSId}/messages`);
+            if (!response.ok) {
+                if (response.status === 404) {
+                    // Session expired
+                    clearInterval(smsPollInterval);
+                    alert('Phone session expired. Please generate a new number.');
+                    document.getElementById('sms-display').style.display = 'none';
+                    document.getElementById('sms-inbox-container').style.display = 'none';
+                    currentSMSId = null;
+                    return;
+                }
+                throw new Error(`Server returned ${response.status}`);
+            }
+            const data = await response.json();
+
+            if (data.messages) {
+                displaySMSInbox(data.messages);
+            }
+        } catch (error) {
+            console.error('Error fetching messages:', error);
+        } finally {
+            // Hide loading
+            document.getElementById('sms-loading').style.display = 'none';
+        }
+    }
+
+    function displaySMSInbox(messages) {
+        const inboxEl = document.getElementById('sms-inbox');
+        document.getElementById('sms-count').textContent = messages.length;
+
+        if (messages.length === 0) {
+            inboxEl.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--dim-color);">No messages yet...</div>';
+            return;
+        }
+
+        inboxEl.innerHTML = messages.map(msg => `
+            <div class="inbox-item ${msg.read ? '' : 'unread'}" data-message-id="${msg.id}">
+                <div class="inbox-item-header">
+                    <span class="inbox-item-from">${msg.from}</span>
+                    <span class="inbox-item-time">${new Date(msg.receivedAt).toLocaleTimeString()}</span>
+                </div>
+                <div class="inbox-item-preview">${msg.body}</div>
+            </div>
+        `).join('');
+
+        // Add click handlers
+        inboxEl.querySelectorAll('.inbox-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const msgId = item.dataset.messageId;
+                const message = messages.find(m => m.id === msgId);
+                displaySMSMessage(message);
+            });
+        });
+    }
+
+    function displaySMSMessage(message) {
+        const viewer = document.getElementById('sms-viewer');
+        viewer.innerHTML = `
+            <div class="message-viewer-header">
+                <div class="message-viewer-from"><strong>From:</strong> ${message.from}</div>
+                <div class="message-viewer-time">${new Date(message.receivedAt).toLocaleString()}</div>
+            </div>
+            <div class="message-viewer-body">${message.body}</div>
+            <div class="message-viewer-close">
+                <button class="cyber-btn" id="btn-close-sms-viewer">CLOSE</button>
+            </div>
+        `;
+        viewer.style.display = 'block';
+
+        document.getElementById('btn-close-sms-viewer').addEventListener('click', () => {
+            viewer.style.display = 'none';
+        });
+
+        // Mark as read
+        if (!message.read) {
+            fetch(`/api/temp/sms/${currentSMSId}/message/${message.id}/read`, { method: 'PUT' });
+            message.read = true;
+        }
+    }
+
+    // Reload SMS inbox button
+    document.getElementById('btn-reload-sms').addEventListener('click', () => {
+        fetchSMSMessages();
+    });
+
+
+    // --- PCAP Analyzer ---
+    const pcapFileInput = document.getElementById('pcap-file-input');
+    const pcapStatus = document.getElementById('pcap-status');
+    const pcapStats = document.getElementById('pcap-stats');
+
+    // Live Capture Variables
+    let livePackets = [];
+    let isCapturing = false;
+
+    // Load network interfaces
+    async function loadNetworkInterfaces() {
+        try {
+            const response = await fetch('/api/pcap/interfaces');
+            const data = await response.json();
+
+            const select = document.getElementById('network-interface');
+            select.innerHTML = '';
+
+            if (data.warning) {
+                select.innerHTML = `<option value="">${data.warning}</option>`;
+                select.disabled = true;
+                document.getElementById('btn-start-capture').disabled = true;
+                document.getElementById('capture-filter').disabled = true;
+                return;
+            }
+
+            if (data.interfaces && data.interfaces.length > 0) {
+                let activeInterface = null;
+
+                data.interfaces.forEach(iface => {
+                    const option = document.createElement('option');
+                    option.value = iface.name;
+                    option.textContent = `${iface.name} - ${iface.description}${iface.active ? ' (Active)' : ''}`;
+                    select.appendChild(option);
+
+                    if (iface.active && !activeInterface) {
+                        activeInterface = iface.name;
+                    }
+                });
+
+                // Auto-select active interface
+                if (activeInterface) {
+                    select.value = activeInterface;
+
+                    // Auto-start capture if socket is ready
+                    if (typeof socket !== 'undefined' && socket !== null && !isCapturing) {
+                        setTimeout(() => {
+                            document.getElementById('btn-start-capture').click();
+                        }, 500);
+                    }
+                }
+            } else {
+                select.innerHTML = '<option value="">No interfaces found</option>';
+            }
+        } catch (error) {
+            console.error('Failed to load interfaces:', error);
+            document.getElementById('network-interface').innerHTML = '<option value="">Error loading interfaces</option>';
+        }
+    }
+
+    // Load interfaces on page load
+    loadNetworkInterfaces();
+
+    // Start Live Capture
+    document.getElementById('btn-start-capture').addEventListener('click', async () => {
+        const iface = document.getElementById('network-interface').value;
+        const filter = document.getElementById('capture-filter').value;
+
+        if (!iface) {
+            alert('Please select a network interface');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/pcap/capture/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ interface: iface, filter })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isCapturing = true;
+                livePackets = [];
+                document.getElementById('btn-start-capture').disabled = true;
+                document.getElementById('btn-stop-capture').disabled = false;
+                document.getElementById('capture-indicator').classList.add('capturing');
+                pcapStats.style.display = 'block';
+
+                // Clear existing packet table
+                document.getElementById('packet-table-body').innerHTML = '';
+            } else {
+                alert('Failed to start capture: ' + (data.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error starting capture: ' + error.message);
+        }
+    });
+
+    // Stop Live Capture
+    document.getElementById('btn-stop-capture').addEventListener('click', async () => {
+        try {
+            const response = await fetch(getApiUrl('/api/pcap/capture/stop'), {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                isCapturing = false;
+                document.getElementById('btn-start-capture').disabled = false;
+                document.getElementById('btn-stop-capture').disabled = true;
+                document.getElementById('capture-indicator').classList.remove('capturing');
+            }
+        } catch (error) {
+            alert('Error stopping capture: ' + error.message);
+        }
+    });
+
+    // WebSocket for live packets - only if socket is initialized
+    if (typeof socket !== 'undefined' && socket !== null) {
+        socket.on('live-packet', (packet) => {
+            if (!isCapturing) return;
+
+            livePackets.push(packet);
+
+            // Add to table
+            const tableBody = document.getElementById('packet-table-body');
+            const row = tableBody.insertRow(0); // Insert at top
+            row.className = 'packet-row live-packet-row';
+
+            let info = '';
+            if (packet.flags) info += packet.flags;
+
+            row.innerHTML = `
+                <td>${livePackets.length}</td>
+                <td>${packet.timestamp ? packet.timestamp.toFixed(6) : 'N/A'}</td>
+                <td>${packet.src || 'N/A'}</td>
+                <td>${packet.srcPort || '-'}</td>
+                <td>${packet.dst || 'N/A'}</td>
+                <td>${packet.dstPort || '-'}</td>
+                <td><span class="protocol-badge">${packet.protocol || 'Unknown'}</span></td>
+                <td>${packet.length} bytes</td>
+                <td class="packet-info">${info || '-'}</td>
+            `;
+
+            // Limit table to 100 rows
+            while (tableBody.rows.length > 100) {
+                tableBody.deleteRow(tableBody.rows.length - 1);
+            }
+        });
+
+        // Update capture stats
+        socket.on('capture-stats', (stats) => {
+            document.getElementById('live-packet-count').textContent = stats.packets.toLocaleString();
+            document.getElementById('live-byte-count').textContent = stats.bytes.toLocaleString();
+        });
+
+        // Handle capture stopped
+        socket.on('capture-stopped', (stats) => {
+            isCapturing = false;
+            document.getElementById('btn-start-capture').disabled = false;
+            document.getElementById('btn-stop-capture').disabled = true;
+            document.getElementById('capture-indicator').classList.remove('capturing');
+        });
+    } else {
+        console.warn('Socket.IO not initialized - live capture features will not work until terminal is opened');
+    }
+
+
+    document.getElementById('btn-analyze-pcap').addEventListener('click', async () => {
+        const file = pcapFileInput.files[0];
+        if (!file) {
+            pcapStatus.innerHTML = '<p style="color: #ff3333;">ERROR: NO FILE SELECTED</p>';
+            pcapStatus.style.display = 'block';
+            return;
+        }
+
+        pcapStatus.innerHTML = '<p style="color: #00ff00;">ANALYZING PCAP FILE...</p>';
+        pcapStatus.style.display = 'block';
+        pcapStats.style.display = 'none';
+
+        try {
+            const formData = new FormData();
+            formData.append('pcapFile', file);
+
+            const response = await fetch(getApiUrl('/api/pcap/upload'), {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+                pcapStatus.innerHTML = `<p style="color: #ff3333;">ERROR: ${data.error}</p>`;
+                return;
+            }
+
+            pcapStatus.style.display = 'none';
+            pcapStats.style.display = 'block';
+
+            // Display statistics
+            document.getElementById('stat-packets').textContent = data.stats.totalPackets.toLocaleString();
+            document.getElementById('stat-bytes').textContent = data.stats.totalBytes.toLocaleString() + ' bytes';
+            document.getElementById('stat-avg-size').textContent = data.stats.averagePacketSize + ' bytes';
+            document.getElementById('stat-duration').textContent = data.stats.duration + 's';
+
+            // Display protocol distribution
+            const protocolChart = document.getElementById('protocol-chart');
+            protocolChart.innerHTML = '';
+            Object.entries(data.stats.protocols).forEach(([protocol, count]) => {
+                const percentage = ((count / data.stats.totalPackets) * 100).toFixed(1);
+                protocolChart.innerHTML += `
+                    <div class="protocol-bar">
+                        <div class="protocol-label">${protocol}: ${count} (${percentage}%)</div>
+                        <div class="protocol-bar-fill" style="width: ${percentage}%"></div>
+                    </div>
+                `;
+            });
+
+            // Display top conversations
+            const conversationsList = document.getElementById('conversations-list');
+            conversationsList.innerHTML = '';
+            data.stats.topConversations.forEach((conv, idx) => {
+                conversationsList.innerHTML += `
+                    <div class="conversation-item">
+                        <span class="conv-rank">${idx + 1}.</span>
+                        <span class="conv-name">${conv.conversation}</span>
+                        <span class="conv-stats">${conv.packets} packets, ${conv.bytes.toLocaleString()} bytes</span>
+                    </div>
+                `;
+            });
+
+            // Display packet table
+            const tableBody = document.getElementById('packet-table-body');
+            tableBody.innerHTML = '';
+            data.packets.forEach((packet, idx) => {
+                const row = tableBody.insertRow();
+                row.className = 'packet-row';
+                row.dataset.packetId = idx;
+
+                // Build info column
+                let info = '';
+                if (packet.flags) info += packet.flags;
+                if (packet.payloadSize !== undefined) info += ` | Payload: ${packet.payloadSize} bytes`;
+
+                row.innerHTML = `
+                    <td>${idx + 1}</td>
+                    <td>${packet.timestamp ? packet.timestamp.toFixed(6) : 'N/A'}</td>
+                    <td>${packet.src || 'N/A'}</td>
+                    <td>${packet.srcPort || '-'}</td>
+                    <td>${packet.dst || 'N/A'}</td>
+                    <td>${packet.dstPort || '-'}</td>
+                    <td><span class="protocol-badge">${packet.protocol || 'Unknown'}</span></td>
+                    <td>${packet.length} bytes</td>
+                    <td class="packet-info">${info || '-'}</td>
+                `;
+
+                // Make row clickable to show hex dump
+                row.style.cursor = 'pointer';
+                row.addEventListener('click', () => {
+                    // Check if details row already exists
+                    const nextRow = row.nextElementSibling;
+                    if (nextRow && nextRow.classList.contains('packet-details-row')) {
+                        nextRow.remove();
+                        return;
+                    }
+
+                    // Create details row
+                    const detailsRow = tableBody.insertRow(row.rowIndex);
+                    detailsRow.className = 'packet-details-row';
+                    detailsRow.innerHTML = `
+                        <td colspan="9">
+                            <div class="packet-details">
+                                <h4>Packet #${idx + 1} Details</h4>
+                                <div class="packet-detail-grid">
+                                    <div><strong>Timestamp:</strong> ${packet.timestamp}</div>
+                                    <div><strong>Total Length:</strong> ${packet.length} bytes</div>
+                                    <div><strong>Captured Length:</strong> ${packet.capturedLength} bytes</div>
+                                    ${packet.ipHeaderLength ? `<div><strong>IP Header Length:</strong> ${packet.ipHeaderLength} bytes</div>` : ''}
+                                    ${packet.payloadSize !== undefined ? `<div><strong>Payload Size:</strong> ${packet.payloadSize} bytes</div>` : ''}
+                                </div>
+                                <h4>Hex Dump (First 256 bytes)</h4>
+                                <div class="hex-dump">${formatHexDump(packet.rawData ? packet.rawData.substring(0, 512) : '')}</div>
+                            </div>
+                        </td>
+                    `;
+                });
+            });
+
+        } catch (error) {
+            console.error('PCAP Analysis Error:', error);
+            pcapStatus.innerHTML = `<p style="color: #ff3333;">ERROR: ${error.message || 'Failed to analyze PCAP file'}</p>`;
+            pcapStatus.style.display = 'block';
+            pcapStats.style.display = 'none';
+        }
+    });
+
+    // Helper function to format hex dump
+    function formatHexDump(hexString) {
+        if (!hexString) return 'No data available';
+
+        let output = '';
+        const bytesPerLine = 16;
+
+        for (let i = 0; i < hexString.length; i += bytesPerLine * 2) {
+            const offset = (i / 2).toString(16).padStart(4, '0');
+            const hexPart = hexString.substring(i, i + bytesPerLine * 2);
+
+            // Format hex bytes
+            let hexBytes = '';
+            for (let j = 0; j < hexPart.length; j += 2) {
+                hexBytes += hexPart.substring(j, j + 2) + ' ';
+                if (j === 14) hexBytes += ' '; // Extra space in middle
+            }
+            hexBytes = hexBytes.padEnd(bytesPerLine * 3 + 1, ' ');
+
+            // Format ASCII representation
+            let ascii = '';
+            for (let j = 0; j < hexPart.length; j += 2) {
+                const byte = parseInt(hexPart.substring(j, j + 2), 16);
+                ascii += (byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.';
+            }
+
+            output += `${offset}  ${hexBytes} |${ascii}|\n`;
+        }
+
+        return output;
+    }
+
+    document.getElementById('btn-pcap-clear').addEventListener('click', () => {
+        pcapFileInput.value = '';
+        pcapStatus.style.display = 'none';
+        pcapStats.style.display = 'none';
+    });
+
+
+
+    // --- Live Packet Capture Logic ---
     const btnStartCapture = document.getElementById('btn-start-capture');
     const btnStopCapture = document.getElementById('btn-stop-capture');
     const interfaceSelect = document.getElementById('network-interface');
@@ -1509,15 +2072,15 @@ document.addEventListener('DOMContentLoaded', () => {
     remoteUrlInput.value = getRemoteUrl();
 
     btnSaveConnection.addEventListener('click', () => {
-        const url = normalizeServerUrl(remoteUrlInput.value);
+        const url = remoteUrlInput.value.trim();
         localStorage.setItem('cyber_remote_url', url);
         connectionStatus.classList.add('active');
-        connectionStatus.innerHTML = `<p style="color: #00ff00;">SAVED AS: ${url || 'LOCAL'}</p>`;
+        connectionStatus.innerHTML = '<p style="color: #00ff00;">SETTINGS SAVED. RELOAD TO APPLY.</p>';
         setTimeout(() => location.reload(), 1000);
     });
 
     btnTestConnection.addEventListener('click', async () => {
-        const url = normalizeServerUrl(remoteUrlInput.value);
+        const url = remoteUrlInput.value.trim();
         if (!url) {
             connectionStatus.classList.add('active');
             connectionStatus.innerHTML = '<p style="color: #00ff00;">USING LOCAL SERVER (OK)</p>';
@@ -1525,7 +2088,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         connectionStatus.classList.add('active');
-        connectionStatus.innerHTML = `<p style="color: #ffff00;">TESTING ${url}...</p>`;
+        connectionStatus.innerHTML = '<p style="color: #ffff00;">TESTING CONNECTION...</p>';
         try {
             // Try to fetch a simple endpoint (e.g., /) or check if we can reach it
             // Since we don't have a dedicated ping endpoint, we'll try fetching the home page or an API
@@ -1540,229 +2103,5 @@ document.addEventListener('DOMContentLoaded', () => {
             connectionStatus.innerHTML = `<p style="color: #ff3333;">CONNECTION ERROR: ${error.message}</p>`;
         }
     });
-
-    // --- Saved Servers Management ---
-    const savedServersList = document.getElementById('saved-servers-list');
-    const btnAddServer = document.getElementById('btn-add-server');
-    const addServerForm = document.getElementById('add-server-form');
-    const btnSaveServer = document.getElementById('btn-save-server');
-    const btnCancelServer = document.getElementById('btn-cancel-server');
-    const newServerName = document.getElementById('new-server-name');
-    const newServerUrl = document.getElementById('new-server-url');
-
-    // Helper functions for saved servers
-    function getSavedServers() {
-        const servers = localStorage.getItem('cyber_saved_servers');
-        return servers ? JSON.parse(servers) : [];
-    }
-
-    function saveSavedServers(servers) {
-        localStorage.setItem('cyber_saved_servers', JSON.stringify(servers));
-    }
-
-    function generateServerId() {
-        return 'server_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-    }
-
-    function renderSavedServers() {
-        const servers = getSavedServers();
-
-        if (servers.length === 0) {
-            savedServersList.innerHTML = `
-                <div class="server-item empty-state">
-                    No saved servers. Click "+ ADD SERVER" to add one.
-                </div>
-            `;
-            return;
-        }
-
-        savedServersList.innerHTML = servers.map(server => `
-            <div class="server-item" data-server-id="${server.id}">
-                <div class="server-info">
-                    <div class="server-name">${server.name}</div>
-                    <div class="server-url">${server.url}</div>
-                </div>
-                <div class="server-actions">
-                    <button class="cyber-btn btn-test-server" data-server-id="${server.id}">TEST</button>
-                    <button class="cyber-btn warning btn-remove-server" data-server-id="${server.id}">REMOVE</button>
-                </div>
-            </div>
-        `).join('');
-
-        // Add event listeners to test and remove buttons
-        document.querySelectorAll('.btn-test-server').forEach(btn => {
-            btn.addEventListener('click', () => testServer(btn.dataset.serverId));
-        });
-
-        document.querySelectorAll('.btn-remove-server').forEach(btn => {
-            btn.addEventListener('click', () => removeServer(btn.dataset.serverId));
-        });
-    }
-
-    function testServer(serverId) {
-        const servers = getSavedServers();
-        const server = servers.find(s => s.id === serverId);
-        if (!server) return;
-
-        connectionStatus.classList.add('active');
-        connectionStatus.innerHTML = `<p style="color: #ffff00;">TESTING ${server.name}...</p>`;
-
-        fetch(server.url.replace(/\/$/, '') + '/api/pcap/interfaces')
-            .then(response => {
-                if (response.ok) {
-                    connectionStatus.innerHTML = `<p style="color: #00ff00;">${server.name}: CONNECTION SUCCESSFUL!</p>`;
-                } else {
-                    connectionStatus.innerHTML = `<p style="color: #ff3333;">${server.name}: FAILED (${response.status})</p>`;
-                }
-            })
-            .catch(error => {
-                connectionStatus.innerHTML = `<p style="color: #ff3333;">${server.name}: ERROR - ${error.message}</p>`;
-            });
-    }
-
-    function removeServer(serverId) {
-        if (!confirm('Remove this server?')) return;
-
-        let servers = getSavedServers();
-        servers = servers.filter(s => s.id !== serverId);
-        saveSavedServers(servers);
-        renderSavedServers();
-    }
-
-    // Show/hide add server form
-    btnAddServer.addEventListener('click', () => {
-        addServerForm.style.display = 'block';
-        btnAddServer.style.display = 'none';
-        newServerName.focus();
-    });
-
-    btnCancelServer.addEventListener('click', () => {
-        addServerForm.style.display = 'none';
-        btnAddServer.style.display = 'block';
-        newServerName.value = '';
-        newServerUrl.value = '';
-    });
-
-    // Save new server
-    btnSaveServer.addEventListener('click', () => {
-        const name = newServerName.value.trim();
-        const url = normalizeServerUrl(newServerUrl.value);
-
-        if (!name || !url) {
-            alert('Please enter both server name and URL/IP');
-            return;
-        }
-
-        const servers = getSavedServers();
-        servers.push({
-            id: generateServerId(),
-            name: name,
-            url: url
-        });
-
-        saveSavedServers(servers);
-        renderSavedServers();
-
-        // Reset form
-        newServerName.value = '';
-        newServerUrl.value = '';
-        addServerForm.style.display = 'none';
-        btnAddServer.style.display = 'block';
-
-        connectionStatus.classList.add('active');
-        connectionStatus.innerHTML = `<p style="color: #00ff00;">SERVER "${name}" SAVED AS: ${url}</p>`;
-        setTimeout(() => {
-            connectionStatus.classList.remove('active');
-        }, 3000);
-    });
-
-    // Initial render
-    renderSavedServers();
-    updateTerminalServerOptions();
-
-    // --- Terminal Server Selector Logic ---
-    const terminalServerSelect = document.getElementById('terminal-server-select');
-    const terminalCustomUrlDiv = document.getElementById('terminal-custom-url');
-    const terminalCustomUrlInput = document.getElementById('terminal-custom-url-input');
-    const btnTerminalConnectCustom = document.getElementById('btn-terminal-connect-custom');
-
-    function updateTerminalServerOptions() {
-        if (!terminalServerSelect) return;
-
-        const servers = getSavedServers();
-        const savedOptions = servers.map(s => `<option value="${s.url}">${s.name}</option>`).join('');
-
-        // Keep first 3 options (Local, Default, Custom) and append saved servers
-        // We need to preserve the current selection if possible
-        const currentVal = terminalServerSelect.value;
-
-        terminalServerSelect.innerHTML = `
-            <option value="local">Local (localhost:3000)</option>
-            <option value="default">Default Remote</option>
-            ${savedOptions}
-            <option value="custom">Custom...</option>
-        `;
-
-        // Restore selection if it still exists, otherwise default to 'local' or 'default'
-        if (currentVal && (currentVal === 'local' || currentVal === 'default' || currentVal === 'custom' || servers.some(s => s.url === currentVal))) {
-            terminalServerSelect.value = currentVal;
-        }
-    }
-
-    if (terminalServerSelect) {
-        terminalServerSelect.addEventListener('change', () => {
-            const value = terminalServerSelect.value;
-
-            if (value === 'custom') {
-                terminalCustomUrlDiv.style.display = 'block';
-                terminalCustomUrlInput.focus();
-            } else {
-                terminalCustomUrlDiv.style.display = 'none';
-
-                let url;
-                if (value === 'local') {
-                    url = 'http://localhost:3000';
-                } else if (value === 'default') {
-                    url = getRemoteUrl();
-                } else {
-                    url = value; // Saved server URL
-                }
-
-                // Save preference
-                localStorage.setItem('cyber_terminal_server_url', url);
-
-                // If terminal is active and in real-time mode, reconnect
-                if (terminalInitialized && terminalMode === 'real') {
-                    connectTerminalSocket(url);
-                }
-            }
-        });
-
-        btnTerminalConnectCustom.addEventListener('click', () => {
-            const url = normalizeServerUrl(terminalCustomUrlInput.value);
-            if (!url) {
-                alert('Please enter a valid URL or IP');
-                return;
-            }
-
-            // Save preference
-            localStorage.setItem('cyber_terminal_server_url', url);
-
-            // Connect
-            if (terminalInitialized && terminalMode === 'real') {
-                connectTerminalSocket(url);
-            } else if (!terminalInitialized) {
-                // If not initialized, just save it. It will be used when user enters real-time mode.
-                alert(`Custom URL set to ${url}. Open Real-Time Terminal to connect.`);
-            }
-        });
-    }
-
-    // Hook into renderSavedServers to update dropdown
-    const originalRenderSavedServers = renderSavedServers;
-    renderSavedServers = function () {
-        originalRenderSavedServers();
-        updateTerminalServerOptions();
-    };
 
 });

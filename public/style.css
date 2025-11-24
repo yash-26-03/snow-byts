@@ -1040,3 +1040,194 @@ textarea:focus {
     color: var(--text-color);
     text-shadow: 0 0 10px var(--accent-color);
 }
+
+/* Capture Status Bar and Progress */
+.capture-status-bar {
+    margin: 15px 0;
+    padding: 15px;
+    background-color: rgba(0, 255, 0, 0.05);
+    border: 1px solid var(--dim-color);
+    border-radius: 4px;
+}
+
+.status-text {
+    margin-bottom: 10px;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    text-align: center;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background-color: #000;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg,
+            var(--dim-color) 0%,
+            var(--accent-color) 50%,
+            var(--dim-color) 100%);
+    background-size: 200% 100%;
+    animation: progressPulse 2s ease-in-out infinite;
+    width: 100%;
+    transition: width 0.3s ease;
+}
+
+@keyframes progressPulse {
+
+    0%,
+    100% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+}
+
+/* Saved Servers List */
+.saved-servers-list {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid var(--dim-color);
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    border-radius: 4px;
+}
+
+.server-item {
+    padding: 12px;
+    margin-bottom: 10px;
+    border: 1px solid var(--dim-color);
+    background-color: rgba(0, 255, 0, 0.05);
+    border-radius: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.3s;
+}
+
+.server-item:hover {
+    background-color: rgba(0, 255, 0, 0.1);
+    border-color: var(--border-color);
+    box-shadow: 0 0 10px var(--dim-color);
+}
+
+.server-info {
+    flex: 1;
+}
+
+.server-name {
+    font-weight: bold;
+    color: var(--text-color);
+    margin-bottom: 5px;
+    font-size: 1rem;
+}
+
+.server-url {
+    color: var(--dim-color);
+    font-size: 0.85rem;
+    font-family: monospace;
+}
+
+.server-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.server-actions button {
+    padding: 5px 12px;
+    font-size: 0.85rem;
+    min-width: auto;
+}
+
+.server-item.empty-state {
+    text-align: center;
+    color: var(--dim-color);
+    font-style: italic;
+    border-style: dashed;
+}
+
+/* Server Selector */
+.server-selector {
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: rgba(0, 255, 0, 0.05);
+    border: 1px solid var(--dim-color);
+    border-radius: 4px;
+}
+
+.server-selector label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.server-selector-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.server-selector select {
+    flex: 1;
+}
+
+.server-selector .custom-url-input {
+    display: none;
+    margin-top: 10px;
+}
+
+.server-selector .custom-url-input.active {
+    display: block;
+}
+
+.connection-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #666;
+    margin-right: 8px;
+}
+
+.connection-indicator.connected {
+    background-color: #0f0;
+    box-shadow: 0 0 8px #0f0;
+    animation: pulse 2s infinite;
+}
+
+.connection-indicator.connecting {
+    background-color: #ff0;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.3;
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.6;
+    }
+}

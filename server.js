@@ -131,8 +131,9 @@ if (!process.env.VERCEL) {
 
 // Start server
 if (require.main === module) {
-  server.listen(port, () => {
-    console.log(`Cyber Security Tools Portal listening at http://localhost:${port}`);
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`Cyber Security Tools Portal listening at http://0.0.0.0:${port}`);
+    console.log(`Access from network: http://<YOUR_IP>:${port}`);
   });
 }
 
